@@ -687,6 +687,7 @@
         };
 
         let appState = loadState();
+        window.appState = appState; // Expose the shared state to the cloud sync module.
 
         function loadState() {
             try {
