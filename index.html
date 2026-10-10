@@ -1654,5 +1654,57 @@
 })();
 </script>
 
+
+<script>
+/* Real image diagnosis via authenticated Supabase Edge Function; no provider key is exposed in the browser. */
+(function () {
+  const upload = document.getElementById('ai-file-input');
+  const host = upload && upload.parentElement;
+  if (!upload || !host || !window.supabase || !window.FARM_CONFIG) return;
+  const extra = document.createElement('div');
+  extra.className = 'mt-3 text-left space-y-2';
+  extra.innerHTML = '<label class="block text-xs font-semibold text-slate-700">發病部位<select id="real-ai-part" class="mt-1 w-full rounded-lg border border-slate-300 p-2 text-xs"><option>葉片</option><option>果實</option><option>莖部</option><option>根部</option><option>整株</option></select></label><label class="block text-xs font-semibold text-slate-700">症狀描述<textarea id="real-ai-symptoms" rows="3" class="mt-1 w-full rounded-lg border border-slate-300 p-2 text-xs" placeholder="例如：葉背有細小斑點，三天內逐漸擴大"></textarea></label><label class="block text-xs font-semibold text-slate-700">發生範圍<select id="real-ai-spread" class="mt-1 w-full rounded-lg border border-slate-300 p-2 text-xs"><option>零星植株</option><option>局部田區</option><option>多數植株</option></select></label><label class="block text-xs font-semibold text-slate-700">近期天候<select id="real-ai-weather" class="mt-1 w-full rounded-lg border border-slate-300 p-2 text-xs"><option>一般</option><option>高溫乾燥</option><option>高溫潮濕</option><option>連日降雨</option></select></label><button id="real-ai-submit" type="button" class="w-full rounded-xl bg-emerald-700 px-4 py-2.5 text-xs font-bold text-white">🔬 使用真實影像 AI 分析</button><p class="text-[11px] text-slate-500">需先以編輯者帳號登入雲端管理。AI 結果僅供初步參考，不是確診或用藥指示。</p>';
+  host.appendChild(extra);
+  const result = document.createElement('div');
+  result.id = 'real-ai-result';
+  result.className = 'hidden mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-left text-xs text-slate-700 space-y-3';
+  host.appendChild(result);
+  const client = window.supabase.createClient(window.FARM_CONFIG.SUPABASE_URL, window.FARM_CONFIG.SUPABASE_ANON_KEY);
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const list = (xs) => Array.isArray(xs) && xs.length ? '<ul class="list-disc pl-5 space-y-1">' + xs.map(x => '<li>' + esc(typeof x === 'string' ? x : JSON.stringify(x)) + '</li>').join('') + '</ul>' : '<p>未提供</p>';
+  window.runAiDiagnosisMock = function(input) {
+    if (!input.files || !input.files[0]) return;
+    const f = input.files[0];
+    if (!/^image\/(jpeg|png|webp)$/.test(f.type)) { alert('請使用 JPG、PNG 或 WEBP 照片。'); input.value=''; return; }
+    if (f.size > 8 * 1024 * 1024) { alert('照片請小於 8MB。'); input.value=''; return; }
+    const oldPreview = document.getElementById('ai-real-preview');
+    if (oldPreview) oldPreview.remove();
+    const img = document.createElement('img'); img.id='ai-real-preview'; img.alt='待分析病徵照片'; img.src=URL.createObjectURL(f); img.className='mt-3 mx-auto max-h-56 rounded-xl border border-slate-200 object-contain';
+    host.insertBefore(img, extra);
+    result.classList.add('hidden');
+  };
+  document.getElementById('real-ai-submit').addEventListener('click', async function() {
+    const f = upload.files && upload.files[0];
+    if (!f) { alert('請先上傳病徵照片。'); return; }
+    result.classList.remove('hidden');
+    result.innerHTML = '<p>正在安全連線至影像 AI，請稍候…</p>';
+    try {
+      const sessionResult = await client.auth.getSession();
+      const session = sessionResult.data && sessionResult.data.session;
+      if (!session) throw new Error('請先開啟「雲端管理」，使用編輯者帳號登入後再分析。');
+      const base64 = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result).split(',')[1]); reader.onerror = reject; reader.readAsDataURL(f); });
+      const cropId = window.appState && window.appState.currentCrop || 'tomato';
+      const { data, error } = await client.functions.invoke('crop-image-diagnosis', { body: { imageBase64: base64, mimeType: f.type, crop: cropId === 'tomato' ? '小果番茄' : '青花菜', part: document.getElementById('real-ai-part').value, symptoms: document.getElementById('real-ai-symptoms').value, spread: document.getElementById('real-ai-spread').value, weather: document.getElementById('real-ai-weather').value } });
+      if (error) throw new Error('AI 服務呼叫失敗；請確認登入狀態及 Edge Function 設定。');
+      if (!data || !data.ok || !data.diagnosis) throw new Error(data && data.message || 'AI 沒有回傳可用結果。');
+      const d = data.diagnosis;
+      result.innerHTML = '<div class="flex items-center justify-between gap-2"><strong class="text-sm text-emerald-900">AI 影像初步判讀</strong><span class="rounded-full bg-amber-100 px-2 py-1 text-amber-800">待人工確認</span></div><p><strong>摘要：</strong>' + esc(d.summary) + '</p><div><strong>可能原因（非確診）</strong>' + (Array.isArray(d.candidates) ? d.candidates.map(x => '<div class="mt-2 rounded-lg border border-emerald-100 bg-white p-3"><strong>' + esc(x.name) + '</strong> <span class="text-slate-500">可能性：' + esc(x.likelihood) + '</span><p class="mt-1">' + esc(x.evidence) + '</p></div>').join('') : '<p>無</p>') + '</div><div><strong>影像觀察依據</strong>' + list(d.visualEvidence) + '</div><p><strong>風險層級：</strong>' + esc(d.riskLevel || '未定') + '</p><div><strong>建議先行處置</strong>' + list(d.immediateActions) + '</div><p><strong>追蹤建議：</strong>' + esc(d.followUp) + '</p><div><strong>限制與不確定性</strong>' + list(d.limitations) + '</div><p class="border-t border-emerald-200 pt-2 text-slate-500">' + esc(data.disclaimer) + '</p>';
+    } catch (e) {
+      result.innerHTML = '<p class="font-semibold text-rose-700">無法完成影像分析</p><p>' + esc(e.message || '請稍後重試。') + '</p><p class="text-slate-500">不會以範例疾病結果冒充真實分析。</p>';
+    }
+  });
+})();
+</script>
+
 </body>
 </html>
