@@ -1,0 +1,1657 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智慧農務與產銷履歷管理系統</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- QRCode.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <!-- Google Fonts Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.92);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(229, 231, 235, 0.8);
+        }
+        .pulse-active {
+            animation: pulse-green 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        @keyframes pulse-green {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.6; transform: scale(1.1); }
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #f1f5f9;
+            border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
+
+    <!-- 頂部浮動 Toast 提示框 Container -->
+    <div id="toast-container" class="fixed top-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+    <!-- 全局自訂Modal確認對話框 -->
+    <div id="custom-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-white rounded-2xl shadow-2xl border border-slate-100 max-w-md w-full p-6 transition-all transform scale-100">
+            <div class="flex items-center gap-3 text-rose-600 mb-3" id="modal-icon-container">
+                <i class="fa-solid me-2 text-2xl" id="modal-icon"></i>
+                <h3 class="text-xl font-bold text-slate-900" id="modal-title">確認操作</h3>
+            </div>
+            <p class="text-slate-600 mb-4 text-sm leading-relaxed" id="modal-message">內容描述...</p>
+            <div id="modal-extra-input-container" class="mb-4 hidden">
+                <p class="text-xs text-rose-600 font-semibold mb-1">請輸入 <span class="underline" id="modal-match-keyword">RESET</span> 以進行確認：</p>
+                <input type="text" id="modal-confirm-input" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-rose-500">
+            </div>
+            <div class="flex justify-end gap-3 pt-2 border-t border-slate-100">
+                <button type="button" id="modal-cancel-btn" class="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 font-medium text-sm transition">取消</button>
+                <button type="button" id="modal-confirm-btn" class="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-medium text-sm transition shadow-sm shadow-rose-200">確定執行</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 頂部導覽列 Header -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16 gap-4">
+                <!-- 左側：標誌與作物切換 -->
+                <div class="flex items-center gap-3 sm:gap-6">
+                    <div class="flex items-center gap-2">
+                        <div class="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center text-xl font-bold shadow-md shadow-emerald-200">
+                            <i class="fa-solid fa-leaf"></i>
+                        </div>
+                        <div class="hidden sm:block">
+                            <h1 class="text-lg font-bold text-slate-900 leading-tight">智慧農務與產銷履歷</h1>
+                            <p class="text-xs text-slate-500">Smart Agriculture Management</p>
+                        </div>
+                    </div>
+
+                    <!-- 作物切換選單 -->
+                    <div class="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
+                        <button onclick="switchCrop('tomato')" id="crop-btn-tomato" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition">
+                            <span>🍅</span> <span class="hidden md:inline">小果番茄</span>
+                        </button>
+                        <button onclick="switchCrop('broccoli')" id="crop-btn-broccoli" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition">
+                            <span>🥦</span> <span class="hidden md:inline">青花菜</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 右側：自動儲存指示燈 + 登記人切換 + 提醒 notification -->
+                <div class="flex items-center gap-2 sm:gap-4">
+                    <!-- 自動儲存指示標籤 (Auto-Save Indicator) -->
+                    <div id="save-status-pill" class="flex items-center gap-2 bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-full border border-emerald-200 text-xs font-medium transition-all">
+                        <span id="save-status-dot" class="w-2.5 h-2.5 rounded-full bg-emerald-500 pulse-active"></span>
+                        <span id="save-status-text" class="hidden sm:inline">🟢 已自動儲存 (LocalStorage)</span>
+                    </div>
+
+                    <!-- 登記人動態選擇與管理按鈕 -->
+                    <div class="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
+                        <i class="fa-solid fa-user-circle text-slate-500 pl-2 text-sm"></i>
+                        <select id="active-registrant-select" onchange="changeActiveRegistrant(this.value)" class="bg-transparent text-xs font-semibold text-slate-700 border-none focus:outline-none cursor-pointer pr-1">
+                            <!-- 動態注入登記人選項 -->
+                        </select>
+                        <button onclick="openRegistrantModal()" title="管理登記人名單" class="px-2 py-1 bg-white hover:bg-slate-200 text-slate-600 rounded-lg text-xs font-medium transition shadow-xs">
+                            <i class="fa-solid fa-gear"></i>
+                        </button>
+                    </div>
+
+                    <!-- 待辦事項提醒 Notifications -->
+                    <button onclick="switchTab('calendar')" class="relative p-2 text-slate-500 hover:text-emerald-600 hover:bg-slate-100 rounded-xl transition">
+                        <i class="fa-regular fa-bell text-lg"></i>
+                        <span id="pending-tasks-count" class="absolute top-1 right-1 w-4 h-4 bg-rose-500 text-white rounded-full text-[10px] font-bold flex items-center justify-center hidden">0</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 頁籤導覽列 (Tabs Navigation) -->
+        <div class="bg-slate-50 border-t border-slate-200 px-4 sm:px-8">
+            <div class="max-w-7xl mx-auto flex gap-1 sm:gap-2 overflow-x-auto custom-scrollbar py-2">
+                <button onclick="switchTab('daily')" id="tab-btn-daily" class="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition">
+                    <i class="fa-solid fa-pen-to-square"></i> 農務與資材登記
+                </button>
+                <button onclick="switchTab('calendar')" id="tab-btn-calendar" class="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition">
+                    <i class="fa-regular fa-calendar-check"></i> 預排月曆與待辦
+                </button>
+                <button onclick="switchTab('ai')" id="tab-btn-ai" class="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition">
+                    <i class="fa-solid fa-robot"></i> AI 病蟲害診斷
+                </button>
+                <button onclick="switchTab('dashboard')" id="tab-btn-dashboard" class="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition">
+                    <i class="fa-solid fa-chart-pie"></i> 後臺數據與實驗對照
+                </button>
+                <button onclick="switchTab('traceability')" id="tab-btn-traceability" class="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition">
+                    <i class="fa-solid fa-qrcode"></i> 公開產銷履歷
+                </button>
+                <button onclick="switchTab('settings')" id="tab-btn-settings" class="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition">
+                    <i class="fa-solid fa-sliders"></i> 系統設定與清空
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- 主要內容區域 Main Content -->
+    <main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8">
+
+        <!-- ==================== TAB 1: 農務與資材登記 ==================== -->
+        <section id="tab-daily" class="tab-panel space-y-6">
+            <!-- 頂部提示欄：草稿自動儲存狀態 -->
+            <div id="draft-alert-banner" class="hidden bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-2xl flex items-center justify-between shadow-xs">
+                <div class="flex items-center gap-2 text-xs sm:text-sm">
+                    <i class="fa-solid fa-clock-rotate-left text-amber-600 text-base"></i>
+                    <span>系統已自動復原先前未儲存的<strong>表單草稿</strong>。您可以繼續填寫或一鍵清除草稿。</span>
+                </div>
+                <button onclick="clearFormDraft()" class="text-xs bg-amber-200 hover:bg-amber-300 text-amber-900 px-3 py-1 rounded-lg font-medium transition">
+                    放棄草稿
+                </button>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                <!-- 左側：登記表單 -->
+                <div class="lg:col-span-5 space-y-6">
+                    <div class="glass-panel p-5 sm:p-6 rounded-2xl shadow-sm border border-slate-200">
+                        <div class="flex items-center justify-between mb-4 border-b border-slate-100 pb-3">
+                            <h2 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                                <i class="fa-solid fa-plus-circle text-emerald-600"></i> 新增農務與資材紀錄
+                            </h2>
+                            <span class="text-[11px] text-slate-400 font-mono">Auto-Saved Draft</span>
+                        </div>
+
+                        <form id="daily-log-form" onsubmit="handleSaveLog(event)" class="space-y-4">
+                            <!-- 時間與登記人 -->
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-600 mb-1">工作日期 *</label>
+                                    <input type="date" id="log-date" required class="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-600 mb-1">登記人 *</label>
+                                    <input type="text" id="log-registrant" readonly class="w-full px-3 py-2 bg-slate-100 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 cursor-not-allowed">
+                                </div>
+                            </div>
+
+                            <!-- 工作時間起訖 -->
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-600 mb-1">開始時間</label>
+                                    <input type="time" id="log-start-time" class="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-600 mb-1">結束時間</label>
+                                    <input type="time" id="log-end-time" class="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+                                </div>
+                            </div>
+
+                            <!-- 工作摘要 -->
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-600 mb-1">工作摘要 / 內容描述 *</label>
+                                <textarea id="log-summary" rows="2" required placeholder="例如：溫室灌溉、對照組葉面施肥、資材盤點..." class="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none"></textarea>
+                            </div>
+
+                            <!-- 資材分類分頁 Block 1: 水份 -->
+                            <div class="p-3 bg-blue-50/50 rounded-xl border border-blue-100 space-y-2">
+                                <div class="flex items-center justify-between">
+                                    <span class="text-xs font-bold text-blue-800 flex items-center gap-1.5">
+                                        <i class="fa-solid fa-droplet text-blue-500"></i> 水份灌溉管理
+                                    </span>
+                                    <div class="flex items-center gap-2 text-xs">
+                                        <label class="inline-flex items-center cursor-pointer">
+                                            <input type="radio" name="water-group" value="exp" checked class="text-blue-600 focus:ring-blue-500">
+                                            <span class="ml-1 text-[11px] font-medium text-blue-900">🧪 實驗組</span>
+                                        </label>
+                                        <label class="inline-flex items-center cursor-pointer">
+                                            <input type="radio" name="water-group" value="ctrl" class="text-blue-600 focus:ring-blue-500">
+                                            <span class="ml-1 text-[11px] font-medium text-slate-600">⚖️ 對照組</span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-2 gap-2">
+                                    <input type="number" step="0.1" id="log-water-amount" placeholder="灌溉水量 (L)" class="px-2.5 py-1.5 bg-white border border-blue-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-blue-500">
+                                    <input type="file" id="log-water-photo" accept="image/*" onchange="previewImage(this, 'water-photo-preview')" class="text-[11px] text-slate-500 file:mr-2 file:py-1 file:px-2 file:rounded-lg file:border-0 file:text-xs file:bg-blue-100 file:text-blue-700 hover:file:bg-blue-200">
+                                </div>
+                                <div id="water-photo-preview" class="hidden mt-2">
+                                    <img src="" class="h-16 w-16 object-cover rounded-lg border border-blue-200 shadow-xs">
+                                </div>
+                            </div>
+
+                            <!-- 資材分類分頁 Block 2: 施肥 -->
+                            <div class="p-3 bg-emerald-50/50 rounded-xl border border-emerald-100 space-y-2">
+                                <div class="flex items-center justify-between">
+                                    <span class="text-xs font-bold text-emerald-800 flex items-center gap-1.5">
+                                        <i class="fa-solid fa-seedling text-emerald-600"></i> 肥料資材施用
+                                    </span>
+                                    <div class="flex items-center gap-2 text-xs">
+                                        <label class="inline-flex items-center cursor-pointer">
+                                            <input type="radio" name="fert-group" value="exp" checked class="text-emerald-600 focus:ring-emerald-500">
+                                            <span class="ml-1 text-[11px] font-medium text-emerald-900">🧪 實驗組</span>
+                                        </label>
+                                        <label class="inline-flex items-center cursor-pointer">
+                                            <input type="radio" name="fert-group" value="ctrl" class="text-emerald-600 focus:ring-emerald-500">
+                                            <span class="ml-1 text-[11px] font-medium text-slate-600">⚖️ 對照組</span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-2 gap-2">
+                                    <input type="text" id="log-fert-name" placeholder="肥料名稱 (如:海藻鈣)" class="px-2.5 py-1.5 bg-white border border-emerald-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500">
+                                    <input type="number" step="0.01" id="log-fert-amount" placeholder="用量 (kg/g)" class="px-2.5 py-1.5 bg-white border border-emerald-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500">
+                                </div>
+                            </div>
+
+                            <!-- 資材分類分頁 Block 3: 病蟲害防護與農藥 -->
+                            <div class="p-3 bg-rose-50/50 rounded-xl border border-rose-100 space-y-2">
+                                <span class="text-xs font-bold text-rose-800 flex items-center gap-1.5">
+                                    <i class="fa-solid fa-shield-virus text-rose-500"></i> 防治資材 / 農藥管理
+                                </span>
+                                <div class="grid grid-cols-2 gap-2">
+                                    <input type="text" id="log-pest-name" placeholder="農藥/防治名稱" class="px-2.5 py-1.5 bg-white border border-rose-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-rose-500">
+                                    <input type="text" id="log-pest-dilution" placeholder="稀釋倍數 (如:1000倍)" class="px-2.5 py-1.5 bg-white border border-rose-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-rose-500">
+                                </div>
+                                <div class="grid grid-cols-2 gap-2">
+                                    <input type="number" id="log-pest-amount" placeholder="使用量 (ml/g)" class="px-2.5 py-1.5 bg-white border border-rose-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-rose-500">
+                                    <input type="number" id="log-pest-safety" placeholder="安全採收期 (天)" class="px-2.5 py-1.5 bg-white border border-rose-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-rose-500">
+                                </div>
+                            </div>
+
+                            <!-- 按鈕組 -->
+                            <div class="flex gap-2 pt-2">
+                                <button type="submit" class="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2.5 px-4 rounded-xl text-xs shadow-md shadow-emerald-200 transition flex items-center justify-center gap-2">
+                                    <i class="fa-solid fa-check"></i> 儲存此筆紀錄
+                                </button>
+                                <button type="button" onclick="clearDailyForm()" class="bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium py-2.5 px-3 rounded-xl text-xs transition">
+                                    重設
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- 右側：歷史農務紀錄列表與一鍵單筆刪除 -->
+                <div class="lg:col-span-7 space-y-4">
+                    <div class="glass-panel p-5 rounded-2xl shadow-sm border border-slate-200">
+                        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
+                            <div>
+                                <h2 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                                    <i class="fa-solid fa-list-check text-emerald-600"></i> 近期農務與資材履歷
+                                </h2>
+                                <p class="text-xs text-slate-500">此作物目前共有 <span id="log-count-badge" class="font-bold text-emerald-600">0</span> 筆紀錄</p>
+                            </div>
+
+                            <!-- 搜尋關鍵字 -->
+                            <div class="relative w-full sm:w-48">
+                                <input type="text" id="log-search-input" oninput="renderLogsList()" placeholder="搜尋紀錄、登記人..." class="w-full pl-8 pr-3 py-1.5 bg-slate-100 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                                <i class="fa-solid fa-search absolute left-2.5 top-2.5 text-slate-400 text-xs"></i>
+                            </div>
+                        </div>
+
+                        <!-- 紀錄清單 Container -->
+                        <div id="logs-list-container" class="space-y-3 max-h-[620px] overflow-y-auto custom-scrollbar pr-1">
+                            <!-- 動態注入 Log 卡片 -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== TAB 2: 預排月曆與待辦 ==================== -->
+        <section id="tab-calendar" class="tab-panel space-y-6 hidden">
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                <!-- 左側：排程月曆視圖 -->
+                <div class="lg:col-span-7 glass-panel p-5 sm:p-6 rounded-2xl shadow-sm border border-slate-200">
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                            <i class="fa-solid fa-calendar-days text-emerald-600"></i> 工作預排月曆
+                        </h2>
+                        <span id="calendar-month-title" class="text-sm font-bold text-slate-700">2026 年 10 月</span>
+                    </div>
+
+                    <!-- 月曆網格 Header -->
+                    <div class="grid grid-cols-7 gap-1 text-center font-semibold text-slate-500 text-xs py-2 border-b border-slate-100">
+                        <span class="text-rose-500">日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span class="text-emerald-600">六</span>
+                    </div>
+                    <!-- 月曆日期格子 Container -->
+                    <div id="calendar-days-grid" class="grid grid-cols-7 gap-1 pt-2">
+                        <!-- 動態生成月曆格子 -->
+                    </div>
+                </div>
+
+                <!-- 右側：代辦事項清單與新增 -->
+                <div class="lg:col-span-5 space-y-6">
+                    <div class="glass-panel p-5 rounded-2xl shadow-sm border border-slate-200">
+                        <h3 class="text-sm font-bold text-slate-900 mb-3 flex items-center gap-2">
+                            <i class="fa-solid fa-plus text-emerald-600"></i> 新增預排事項
+                        </h3>
+                        <form onsubmit="handleSaveSchedule(event)" class="space-y-3">
+                            <input type="date" id="sched-date" required class="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+                            <input type="text" id="sched-title" required placeholder="事項標題 (例如: 溫室溫濕度設備保養)" class="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+                            <div class="grid grid-cols-2 gap-2">
+                                <select id="sched-priority" class="px-3 py-2 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+                                    <option value="normal">優先度: 一般</option>
+                                    <option value="high">優先度: 高 (緊急)</option>
+                                </select>
+                                <select id="sched-registrant" class="px-3 py-2 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+                                    <!-- 動態填入登記人 -->
+                                </select>
+                            </div>
+                            <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2 rounded-xl text-xs shadow-sm transition">
+                                新增預排事項
+                            </button>
+                        </form>
+                    </div>
+
+                    <!-- 預排待辦列表與一鍵刪除 -->
+                    <div class="glass-panel p-5 rounded-2xl shadow-sm border border-slate-200">
+                        <h3 class="text-sm font-bold text-slate-900 mb-3 flex items-center gap-2">
+                            <i class="fa-solid fa-clock-rotate-left text-emerald-600"></i> 待辦與提醒清單
+                        </h3>
+                        <div id="schedule-list-container" class="space-y-2 max-h-80 overflow-y-auto custom-scrollbar">
+                            <!-- 動態注入排程項目 -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== TAB 3: AI 病蟲害診斷 ==================== -->
+        <section id="tab-ai" class="tab-panel space-y-6 hidden">
+            <div class="glass-panel p-6 rounded-2xl shadow-sm border border-slate-200">
+                <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+                    <div>
+                        <h2 class="text-lg font-bold text-slate-900 flex items-center gap-2">
+                            <i class="fa-solid fa-robot text-emerald-600"></i> AI 病蟲害智能影像診斷
+                        </h2>
+                        <p class="text-xs text-slate-500 mt-0.5">整合 PPM (植物保護資訊系統) 與 AZAI / ACRI 診斷知識庫數據</p>
+                    </div>
+                    <div class="flex gap-2">
+                        <span class="px-2.5 py-1 bg-emerald-100 text-emerald-800 text-[11px] font-semibold rounded-lg">PPM 整合</span>
+                        <span class="px-2.5 py-1 bg-blue-100 text-blue-800 text-[11px] font-semibold rounded-lg">AZAI 知識庫</span>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 mt-6">
+                    <!-- 左側：影像上傳與快速測試 -->
+                    <div class="lg:col-span-5 space-y-4">
+                        <div class="border-2 border-dashed border-slate-200 rounded-2xl p-6 text-center hover:border-emerald-400 transition bg-slate-50/50 cursor-pointer" onclick="document.getElementById('ai-file-input').click()">
+                            <i class="fa-solid fa-cloud-arrow-up text-3xl text-slate-400 mb-2"></i>
+                            <p class="text-xs font-semibold text-slate-700">點擊或拖拽上傳植株葉片照片</p>
+                            <p class="text-[11px] text-slate-400 mt-1">支援 JPG, PNG 格式 (最大 10MB)</p>
+                            <input type="file" id="ai-file-input" accept="image/*" class="hidden" onchange="runAiDiagnosisMock(this)">
+                        </div>
+
+                        <!-- 快速範例測試卡片 -->
+                        <div>
+                            <p class="text-xs font-bold text-slate-600 mb-2">快速載入常見病蟲害範例測試：</p>
+                            <div class="grid grid-cols-2 gap-2">
+                                <button onclick="triggerAiSample('late_blight')" class="p-2 bg-white hover:bg-emerald-50 border border-slate-200 hover:border-emerald-300 rounded-xl text-left text-xs transition">
+                                    <div class="font-bold text-slate-800">🍅 番茄晚疫病</div>
+                                    <div class="text-[10px] text-slate-400">Phytophthora infestans</div>
+                                </button>
+                                <button onclick="triggerAiSample('black_rot')" class="p-2 bg-white hover:bg-emerald-50 border border-slate-200 hover:border-emerald-300 rounded-xl text-left text-xs transition">
+                                    <div class="font-bold text-slate-800">🥦 青花菜黑腐病</div>
+                                    <div class="text-[10px] text-slate-400">Xanthomonas campestris</div>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 右側：診斷結果與一鍵套用 -->
+                    <div class="lg:col-span-7">
+                        <div id="ai-result-box" class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm min-h-[300px] flex flex-col justify-between">
+                            <div class="text-center py-12 text-slate-400" id="ai-placeholder">
+                                <i class="fa-solid fa-microscope text-4xl mb-3 text-slate-300"></i>
+                                <p class="text-xs">請上傳照片或選擇示範樣本以展開 AI 辨識分析</p>
+                            </div>
+
+                            <div id="ai-analysis-content" class="hidden space-y-4">
+                                <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+                                    <div>
+                                        <span id="ai-disease-tag" class="px-2.5 py-1 bg-rose-100 text-rose-700 text-xs font-bold rounded-lg">病害偵測</span>
+                                        <h3 id="ai-disease-title" class="text-lg font-bold text-slate-900 mt-1">番茄晚疫病</h3>
+                                    </div>
+                                    <div class="text-right">
+                                        <div class="text-xs text-slate-400">AI 辨識信心度</div>
+                                        <div id="ai-confidence" class="text-lg font-extrabold text-emerald-600">96.8%</div>
+                                    </div>
+                                </div>
+
+                                <div class="space-y-2 text-xs">
+                                    <div class="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                                        <span class="font-bold text-slate-700 block mb-1">🌿 生物與物理防治建議 (ACRI/AZAI)</span>
+                                        <p id="ai-bio-remedy" class="text-slate-600 leading-relaxed">發病初期適當疏葉保持通風；可施用亞磷酸混合等量氫氧化鉀 (1,000倍) 進行誘導抗性。</p>
+                                    </div>
+
+                                    <div class="p-3 bg-rose-50/60 rounded-xl border border-rose-100">
+                                        <span class="font-bold text-rose-900 block mb-1">💊 推薦化學防治資材處方 (PPM標準)</span>
+                                        <div class="grid grid-cols-2 gap-2 mt-1">
+                                            <div><strong>推薦藥劑：</strong><span id="ai-chem-name">波爾多液 / 亞托敏</span></div>
+                                            <div><strong>稀釋倍數：</strong><span id="ai-chem-dilution">1000倍</span></div>
+                                            <div><strong>建議劑量：</strong><span id="ai-chem-amount">500 ml</span></div>
+                                            <div><strong>安全採收期：</strong><span id="ai-chem-safety">3 天</span></div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- 一鍵將處方帶入農務紀錄 -->
+                                <button onclick="applyAiPrescriptionToLog()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-4 rounded-xl text-xs shadow-md shadow-emerald-200 transition flex items-center justify-center gap-2 mt-2">
+                                    <i class="fa-solid fa-bolt"></i> ⚡ 動作：一鍵將處方帶入「農務紀錄」
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== TAB 4: 後臺數據與實驗對照 ==================== -->
+        <section id="tab-dashboard" class="tab-panel space-y-6 hidden">
+            <!-- 數據 KPI 統計列 -->
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <div class="glass-panel p-4 rounded-2xl border border-slate-200">
+                    <div class="text-xs font-semibold text-slate-500">總累積工時 (小時)</div>
+                    <div id="stat-total-hours" class="text-2xl font-bold text-slate-900 mt-1">0.0</div>
+                    <div class="text-[10px] text-slate-400 mt-1">基於時間區間計算</div>
+                </div>
+
+                <div class="glass-panel p-4 rounded-2xl border border-slate-200">
+                    <div class="text-xs font-semibold text-slate-500">實驗組總灌溉量</div>
+                    <div id="stat-exp-water" class="text-2xl font-bold text-blue-600 mt-1">0 L</div>
+                    <div class="text-[10px] text-slate-400 mt-1">對照組: <span id="stat-ctrl-water">0 L</span></div>
+                </div>
+
+                <div class="glass-panel p-4 rounded-2xl border border-slate-200">
+                    <div class="text-xs font-semibold text-slate-500">實驗組肥料總施用</div>
+                    <div id="stat-exp-fert" class="text-2xl font-bold text-emerald-600 mt-1">0 kg</div>
+                    <div class="text-[10px] text-slate-400 mt-1">對照組: <span id="stat-ctrl-fert">0 kg</span></div>
+                </div>
+
+                <div class="glass-panel p-4 rounded-2xl border border-slate-200">
+                    <div class="text-xs font-semibold text-slate-500">病蟲害防治事件數</div>
+                    <div id="stat-pesticide-count" class="text-2xl font-bold text-rose-600 mt-1">0 次</div>
+                    <div class="text-[10px] text-slate-400 mt-1">符合 PPM 防護標準</div>
+                </div>
+            </div>
+
+            <!-- 圖表分析區塊 -->
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                <!-- 實驗組 vs 對照組 柱狀圖 -->
+                <div class="lg:col-span-7 glass-panel p-5 rounded-2xl border border-slate-200">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-sm font-bold text-slate-900 flex items-center gap-2">
+                            <i class="fa-solid fa-chart-column text-emerald-600"></i> 實驗組 vs 對照組 資材使用量對照
+                        </h3>
+                        <button onclick="exportLogsToCSV()" class="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition flex items-center gap-1.5">
+                            <i class="fa-solid fa-file-csv text-emerald-600"></i> 匯出 CSV 報表
+                        </button>
+                    </div>
+                    <div class="h-64">
+                        <canvas id="chart-exp-vs-ctrl"></canvas>
+                    </div>
+                </div>
+
+                <!-- 農務工時趨勢 折線圖 -->
+                <div class="lg:col-span-5 glass-panel p-5 rounded-2xl border border-slate-200">
+                    <h3 class="text-sm font-bold text-slate-900 mb-4 flex items-center gap-2">
+                        <i class="fa-solid fa-chart-line text-emerald-600"></i> 近期工時累積趨勢
+                    </h3>
+                    <div class="h-64">
+                        <canvas id="chart-work-hours"></canvas>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== TAB 5: 公開產銷履歷 ==================== -->
+        <section id="tab-traceability" class="tab-panel space-y-6 hidden">
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                <!-- 左側：公開履歷檢視模擬 -->
+                <div class="lg:col-span-7 glass-panel p-6 rounded-2xl border border-slate-200">
+                    <div class="border-b border-slate-100 pb-4 mb-4 flex items-center justify-between">
+                        <div>
+                            <span class="px-2.5 py-1 bg-emerald-100 text-emerald-800 text-[11px] font-bold rounded-lg">TAP 產銷履歷驗證標章</span>
+                            <h2 class="text-lg font-bold text-slate-900 mt-1" id="trace-crop-title">小果番茄 產銷履歷公開檢視頁</h2>
+                        </div>
+                        <i class="fa-solid fa-circle-check text-emerald-500 text-2xl"></i>
+                    </div>
+
+                    <!-- 履歷時序圖 (Timeline) -->
+                    <div id="traceability-timeline" class="space-y-4 relative before:absolute before:inset-0 before:left-3.5 before:w-0.5 before:bg-emerald-200">
+                        <!-- 動態注入時間軸履歷 -->
+                    </div>
+                </div>
+
+                <!-- 右側：動態 QR Code 生成與列印 -->
+                <div class="lg:col-span-5 glass-panel p-6 rounded-2xl border border-slate-200 flex flex-col items-center text-center">
+                    <h3 class="text-base font-bold text-slate-900 mb-1">動態產銷履歷 QR Code</h3>
+                    <p class="text-xs text-slate-500 mb-4">印製於農產品包裝盒，消費者掃描即可查驗履歷</p>
+
+                    <!-- QR Code 容器 -->
+                    <div class="p-4 bg-white rounded-2xl shadow-md border border-slate-200 mb-4">
+                        <div id="qrcode-canvas" class="flex justify-center"></div>
+                    </div>
+
+                    <div class="flex gap-2 w-full">
+                        <button onclick="downloadQrCode()" class="flex-1 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs rounded-xl transition shadow-xs">
+                            <i class="fa-solid fa-download me-1"></i> 下載 QR 圖片
+                        </button>
+                        <button onclick="window.print()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-xl transition">
+                            <i class="fa-solid fa-print me-1"></i> 列印
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== TAB 6: 系統設定與清空 ==================== -->
+        <section id="tab-settings" class="tab-panel space-y-6 hidden">
+            <!-- 登記人動態管理區塊 -->
+            <div class="glass-panel p-6 rounded-2xl border border-slate-200">
+                <h3 class="text-base font-bold text-slate-900 mb-3 flex items-center gap-2">
+                    <i class="fa-solid fa-users text-emerald-600"></i> 登記人名單管理
+                </h3>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                    <form onsubmit="handleAddRegistrant(event)" class="flex gap-2">
+                        <input type="text" id="new-reg-name" required placeholder="登記人姓名 (如: 王農夫)" class="px-3 py-2 border border-slate-200 rounded-xl text-xs flex-1 focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+                        <input type="text" id="new-reg-title" placeholder="職稱 (如: 技術員)" class="px-3 py-2 border border-slate-200 rounded-xl text-xs flex-1 focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+                        <button type="submit" class="px-4 py-2 bg-emerald-600 text-white font-semibold rounded-xl text-xs transition hover:bg-emerald-700 whitespace-nowrap">
+                            新增
+                        </button>
+                    </form>
+                </div>
+                <div id="registrants-list-container" class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <!-- 動態注入登記人列表 -->
+                </div>
+            </div>
+
+            <!-- 一鍵刪除與全域重置專區 (One-Click Clear & Reset Zone) -->
+            <div class="glass-panel p-6 rounded-2xl border border-rose-200 bg-rose-50/20">
+                <h3 class="text-base font-bold text-rose-900 mb-2 flex items-center gap-2">
+                    <i class="fa-solid fa-triangle-exclamation text-rose-600"></i> 資料清理與一鍵重置專區
+                </h3>
+                <p class="text-xs text-slate-600 mb-4 leading-relaxed">
+                    提供快速清理測試數據功能。請注意，執行清空或重置操作後將無法還原 LocalStorage 資料。
+                </p>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <!-- 一鍵清空當前作物紀錄 -->
+                    <div class="bg-white p-4 rounded-xl border border-rose-200 shadow-xs space-y-2">
+                        <div class="font-bold text-xs text-rose-800">🗑️ 一鍵清空當前作物的所有紀錄</div>
+                        <p class="text-[11px] text-slate-500">清除目前選取的作物 (<span id="clear-target-crop-name" class="font-bold">小果番茄</span>) 之所有履歷與待辦事項。</p>
+                        <button onclick="promptClearCurrentCrop()" class="w-full mt-2 px-3 py-2 bg-rose-100 hover:bg-rose-200 text-rose-700 font-semibold rounded-lg text-xs transition">
+                            清空當前作物資料
+                        </button>
+                    </div>
+
+                    <!-- 一鍵重置全系統 -->
+                    <div class="bg-white p-4 rounded-xl border border-rose-300 shadow-xs space-y-2">
+                        <div class="font-bold text-xs text-rose-900">💣 重置全系統至預設狀態</div>
+                        <p class="text-[11px] text-slate-500">刪除包含所有作物、登記人與預排事項，恢復系統原始測試資料。</p>
+                        <button onclick="promptFullSystemReset()" class="w-full mt-2 px-3 py-2 bg-rose-600 hover:bg-rose-700 text-white font-semibold rounded-lg text-xs transition shadow-xs shadow-rose-200">
+                            一鍵重置全系統資料
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <script>
+        // ==================== 1. 核心狀態與 LocalStorage 管理 ====================
+        const STORAGE_KEY = 'smart_farm_app_v2';
+        const DRAFT_PREFIX = 'farm_draft_';
+
+        // 預設示範資料
+        const defaultState = {
+            currentCrop: 'tomato',
+            activeRegistrantId: 'reg_1',
+            registrants: [
+                { id: 'reg_1', name: '張農夫', title: '場長 / 管理員' },
+                { id: 'reg_2', name: '陳技術員', title: '栽培專家' }
+            ],
+            crops: {
+                tomato: {
+                    id: 'tomato',
+                    name: '小果番茄',
+                    icon: '🍅',
+                    logs: [
+                        {
+                            id: 'log_101',
+                            date: '2026-10-09',
+                            startTime: '08:00',
+                            endTime: '11:30',
+                            registrant: '張農夫',
+                            summary: '溫室滴灌與實驗組亞磷酸葉面噴施',
+                            water: { amount: 120, group: 'exp', photo: '' },
+                            fertilizer: { name: '有機海藻鈣', amount: 2.0, group: 'exp' },
+                            pesticide: { name: '蘇力菌', dilution: '1000倍', amount: 400, safetyPeriod: 3 },
+                            createdAt: new Date().toISOString()
+                        },
+                        {
+                            id: 'log_102',
+                            date: '2026-10-08',
+                            startTime: '13:30',
+                            endTime: '16:00',
+                            registrant: '陳技術員',
+                            summary: '對照組常規灌溉與雜草清理',
+                            water: { amount: 90, group: 'ctrl', photo: '' },
+                            fertilizer: { name: '通用複合肥', amount: 1.5, group: 'ctrl' },
+                            pesticide: { name: '', dilution: '', amount: 0, safetyPeriod: 0 },
+                            createdAt: new Date().toISOString()
+                        }
+                    ],
+                    schedules: [
+                        { id: 'sch_1', date: '2026-10-12', title: '番茄採收前安全採收期複查', registrant: '張農夫', priority: 'high', completed: false }
+                    ]
+                },
+                broccoli: {
+                    id: 'broccoli',
+                    name: '青花菜',
+                    icon: '🥦',
+                    logs: [
+                        {
+                            id: 'log_201',
+                            date: '2026-10-07',
+                            startTime: '07:30',
+                            endTime: '10:00',
+                            registrant: '陳技術員',
+                            summary: '露地青花菜防蟲網巡查與生物防治',
+                            water: { amount: 200, group: 'exp', photo: '' },
+                            fertilizer: { name: '苦茶粕', amount: 5.0, group: 'exp' },
+                            pesticide: { name: '印楝素', dilution: '800倍', amount: 300, safetyPeriod: 2 },
+                            createdAt: new Date().toISOString()
+                        }
+                    ],
+                    schedules: [
+                        { id: 'sch_2', date: '2026-10-15', title: '露地田區中耕除草', registrant: '陳技術員', priority: 'normal', completed: false }
+                    ]
+                }
+            }
+        };
+
+        let appState = loadState();
+
+        function loadState() {
+            try {
+                const saved = localStorage.getItem(STORAGE_KEY);
+                return saved ? JSON.parse(saved) : JSON.parse(JSON.stringify(defaultState));
+            } catch (e) {
+                console.error('LocalStorage 載入失敗', e);
+                return JSON.parse(JSON.stringify(defaultState));
+            }
+        }
+
+        function saveStateToStorage(notify = true) {
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
+                updateAutoSaveStatusUI();
+                if (notify) {
+                    showToast('💾 資料已自動同步至 LocalStorage', 'success');
+                }
+            } catch (e) {
+                showToast('❌ 儲存失敗，可能超出儲存空間上限', 'error');
+            }
+        }
+
+        function updateAutoSaveStatusUI() {
+            const pill = document.getElementById('save-status-pill');
+            const dot = document.getElementById('save-status-dot');
+            const text = document.getElementById('save-status-text');
+            const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+            dot.className = 'w-2.5 h-2.5 rounded-full bg-emerald-500 pulse-active';
+            text.innerHTML = `🟢 已自動儲存 (${now})`;
+        }
+
+        // Toast 訊息提示元件
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            
+            const bgClass = type === 'success' ? 'bg-emerald-800 text-white' :
+                            type === 'error' ? 'bg-rose-800 text-white' :
+                            'bg-slate-800 text-white';
+            
+            toast.className = `pointer-events-auto px-4 py-2.5 rounded-xl shadow-lg text-xs font-medium flex items-center gap-2 transform transition-all duration-300 translate-y-2 opacity-0 ${bgClass}`;
+            toast.innerHTML = message;
+
+            container.appendChild(toast);
+
+            setTimeout(() => {
+                toast.classList.remove('translate-y-2', 'opacity-0');
+            }, 10);
+
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-2');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        // 自訂 Modal (完全替代原生 alert & confirm)
+        let modalConfirmCallback = null;
+
+        function showCustomModal({ title, message, icon = 'fa-triangle-exclamation', danger = false, requireInput = null, onConfirm }) {
+            const modal = document.getElementById('custom-modal');
+            document.getElementById('modal-title').innerText = title;
+            document.getElementById('modal-message').innerText = message;
+            
+            const iconElem = document.getElementById('modal-icon');
+            iconElem.className = `fa-solid ${icon} me-2 text-2xl`;
+
+            const inputContainer = document.getElementById('modal-extra-input-container');
+            const inputField = document.getElementById('modal-confirm-input');
+
+            if (requireInput) {
+                inputContainer.classList.remove('hidden');
+                document.getElementById('modal-match-keyword').innerText = requireInput;
+                inputField.value = '';
+            } else {
+                inputContainer.classList.add('hidden');
+            }
+
+            modalConfirmCallback = () => {
+                if (requireInput && inputField.value.trim() !== requireInput) {
+                    showToast(`⚠️ 請精確輸入「${requireInput}」以進行確認`, 'error');
+                    return;
+                }
+                modal.classList.add('hidden');
+                if (onConfirm) onConfirm();
+            };
+
+            modal.classList.remove('hidden');
+        }
+
+        document.getElementById('modal-cancel-btn').addEventListener('click', () => {
+            document.getElementById('custom-modal').classList.add('hidden');
+        });
+
+        document.getElementById('modal-confirm-btn').addEventListener('click', () => {
+            if (modalConfirmCallback) modalConfirmCallback();
+        });
+
+
+        // ==================== 2. 草稿自動儲存 (Draft Auto-Save) ====================
+        function setupDraftAutoSaveListeners() {
+            const form = document.getElementById('daily-log-form');
+            const inputs = form.querySelectorAll('input, textarea, select');
+
+            inputs.forEach(input => {
+                input.addEventListener('input', debounce(() => {
+                    saveFormDraft();
+                }, 400));
+            });
+        }
+
+        function debounce(func, wait) {
+            let timeout;
+            return function(...args) {
+                clearTimeout(timeout);
+                timeout = setTimeout(() => func.apply(this, args), wait);
+            };
+        }
+
+        function saveFormDraft() {
+            const cropId = appState.currentCrop;
+            const draftData = {
+                date: document.getElementById('log-date').value,
+                startTime: document.getElementById('log-start-time').value,
+                endTime: document.getElementById('log-end-time').value,
+                summary: document.getElementById('log-summary').value,
+                waterAmount: document.getElementById('log-water-amount').value,
+                waterGroup: document.querySelector('input[name="water-group"]:checked')?.value,
+                fertName: document.getElementById('log-fert-name').value,
+                fertAmount: document.getElementById('log-fert-amount').value,
+                fertGroup: document.querySelector('input[name="fert-group"]:checked')?.value,
+                pestName: document.getElementById('log-pest-name').value,
+                pestDilution: document.getElementById('log-pest-dilution').value,
+                pestAmount: document.getElementById('log-pest-amount').value,
+                pestSafety: document.getElementById('log-pest-safety').value,
+            };
+
+            localStorage.setItem(DRAFT_PREFIX + cropId, JSON.stringify(draftData));
+            
+            // 更新狀態指示燈
+            const dot = document.getElementById('save-status-dot');
+            dot.className = 'w-2.5 h-2.5 rounded-full bg-amber-500 pulse-active';
+            document.getElementById('save-status-text').innerText = '💾 草稿自動暫存中...';
+            setTimeout(updateAutoSaveStatusUI, 600);
+        }
+
+        function checkAndRestoreDraft() {
+            const cropId = appState.currentCrop;
+            const draftRaw = localStorage.getItem(DRAFT_PREFIX + cropId);
+            const banner = document.getElementById('draft-alert-banner');
+
+            if (draftRaw) {
+                try {
+                    const draft = JSON.parse(draftRaw);
+                    if (draft.summary || draft.waterAmount || draft.fertName || draft.pestName) {
+                        document.getElementById('log-date').value = draft.date || getTodayString();
+                        document.getElementById('log-start-time').value = draft.startTime || '';
+                        document.getElementById('log-end-time').value = draft.endTime || '';
+                        document.getElementById('log-summary').value = draft.summary || '';
+                        document.getElementById('log-water-amount').value = draft.waterAmount || '';
+                        document.getElementById('log-fert-name').value = draft.fertName || '';
+                        document.getElementById('log-fert-amount').value = draft.fertAmount || '';
+                        document.getElementById('log-pest-name').value = draft.pestName || '';
+                        document.getElementById('log-pest-dilution').value = draft.pestDilution || '';
+                        document.getElementById('log-pest-amount').value = draft.pestAmount || '';
+                        document.getElementById('log-pest-safety').value = draft.pestSafety || '';
+
+                        banner.classList.remove('hidden');
+                        return;
+                    }
+                } catch(e) {}
+            }
+            banner.classList.add('hidden');
+        }
+
+        function clearFormDraft() {
+            const cropId = appState.currentCrop;
+            localStorage.removeItem(DRAFT_PREFIX + cropId);
+            document.getElementById('draft-alert-banner').classList.add('hidden');
+            clearDailyForm();
+            showToast('已放棄草稿內容', 'info');
+        }
+
+
+        // ==================== 3. 作物與登記人動態切換 ====================
+        function switchCrop(cropId) {
+            appState.currentCrop = cropId;
+            saveStateToStorage(false);
+            updateCropHeaderUI();
+            renderAllTabs();
+            checkAndRestoreDraft();
+            showToast(`已切換至作物：${appState.crops[cropId].name}`, 'info');
+        }
+
+        function updateCropHeaderUI() {
+            const tomatoBtn = document.getElementById('crop-btn-tomato');
+            const broccoliBtn = document.getElementById('crop-btn-broccoli');
+
+            if (appState.currentCrop === 'tomato') {
+                tomatoBtn.className = 'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-white text-emerald-800 shadow-xs border border-emerald-200';
+                broccoliBtn.className = 'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 hover:text-slate-900';
+            } else {
+                broccoliBtn.className = 'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-white text-emerald-800 shadow-xs border border-emerald-200';
+                tomatoBtn.className = 'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 hover:text-slate-900';
+            }
+
+            document.getElementById('clear-target-crop-name').innerText = appState.crops[appState.currentCrop].name;
+        }
+
+        function renderRegistrantSelects() {
+            const activeSelect = document.getElementById('active-registrant-select');
+            const schedSelect = document.getElementById('sched-registrant');
+
+            activeSelect.innerHTML = appState.registrants.map(r => `<option value="${r.id}" ${r.id === appState.activeRegistrantId ? 'selected' : ''}>${r.name} (${r.title})</option>`).join('');
+            schedSelect.innerHTML = appState.registrants.map(r => `<option value="${r.name}">${r.name}</option>`).join('');
+
+            const activeReg = appState.registrants.find(r => r.id === appState.activeRegistrantId) || appState.registrants[0];
+            document.getElementById('log-registrant').value = activeReg ? activeReg.name : '';
+        }
+
+        function changeActiveRegistrant(regId) {
+            appState.activeRegistrantId = regId;
+            saveStateToStorage(false);
+            renderRegistrantSelects();
+            showToast('已更新目前登記人', 'info');
+        }
+
+
+        // ==================== 4. 農務與資材紀錄處理 (Tab 1 Logic) ====================
+        function handleSaveLog(e) {
+            e.preventDefault();
+            const crop = appState.crops[appState.currentCrop];
+
+            const newLog = {
+                id: 'log_' + Date.now(),
+                date: document.getElementById('log-date').value,
+                startTime: document.getElementById('log-start-time').value,
+                endTime: document.getElementById('log-end-time').value,
+                registrant: document.getElementById('log-registrant').value,
+                summary: document.getElementById('log-summary').value,
+                water: {
+                    amount: parseFloat(document.getElementById('log-water-amount').value) || 0,
+                    group: document.querySelector('input[name="water-group"]:checked')?.value || 'exp',
+                    photo: document.querySelector('#water-photo-preview img')?.src || ''
+                },
+                fertilizer: {
+                    name: document.getElementById('log-fert-name').value,
+                    amount: parseFloat(document.getElementById('log-fert-amount').value) || 0,
+                    group: document.querySelector('input[name="fert-group"]:checked')?.value || 'exp'
+                },
+                pesticide: {
+                    name: document.getElementById('log-pest-name').value,
+                    dilution: document.getElementById('log-pest-dilution').value,
+                    amount: parseFloat(document.getElementById('log-pest-amount').value) || 0,
+                    safetyPeriod: parseInt(document.getElementById('log-pest-safety').value) || 0
+                },
+                createdAt: new Date().toISOString()
+            };
+
+            crop.logs.unshift(newLog);
+            saveStateToStorage();
+            
+            // 提交後清空草稿
+            localStorage.removeItem(DRAFT_PREFIX + appState.currentCrop);
+            document.getElementById('draft-alert-banner').classList.add('hidden');
+            
+            clearDailyForm();
+            renderLogsList();
+            renderDashboard();
+            renderTraceability();
+        }
+
+        function clearDailyForm() {
+            document.getElementById('daily-log-form').reset();
+            document.getElementById('log-date').value = getTodayString();
+            document.getElementById('water-photo-preview').classList.add('hidden');
+            const activeReg = appState.registrants.find(r => r.id === appState.activeRegistrantId);
+            document.getElementById('log-registrant').value = activeReg ? activeReg.name : '';
+        }
+
+        // 單筆一鍵刪除農務紀錄
+        function deleteSingleLog(logId) {
+            showCustomModal({
+                title: '一鍵刪除紀錄',
+                message: '確定要刪除此筆農務與資材紀錄嗎？此動作無法復原。',
+                icon: 'fa-trash-can',
+                danger: true,
+                onConfirm: () => {
+                    const logs = appState.crops[appState.currentCrop].logs;
+                    appState.crops[appState.currentCrop].logs = logs.filter(l => l.id !== logId);
+                    saveStateToStorage();
+                    renderLogsList();
+                    renderDashboard();
+                    renderTraceability();
+                    showToast('🗑️ 紀錄已一鍵刪除', 'info');
+                }
+            });
+        }
+
+        function renderLogsList() {
+            const container = document.getElementById('logs-list-container');
+            const searchKw = document.getElementById('log-search-input').value.toLowerCase();
+            const logs = appState.crops[appState.currentCrop].logs.filter(l => 
+                l.summary.toLowerCase().includes(searchKw) || 
+                l.registrant.toLowerCase().includes(searchKw) ||
+                (l.fertilizer && l.fertilizer.name.toLowerCase().includes(searchKw)) ||
+                (l.pesticide && l.pesticide.name.toLowerCase().includes(searchKw))
+            );
+
+            document.getElementById('log-count-badge').innerText = logs.length;
+
+            if (logs.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center py-10 text-slate-400">
+                        <i class="fa-solid fa-folder-open text-3xl mb-2 text-slate-300"></i>
+                        <p class="text-xs">尚無符合的農務履歷紀錄</p>
+                    </div>`;
+                return;
+            }
+
+            container.innerHTML = logs.map(log => `
+                <div class="p-4 bg-white rounded-xl border border-slate-200 hover:border-emerald-300 shadow-xs transition space-y-2">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs font-bold text-slate-800">${log.date}</span>
+                            <span class="text-[11px] px-2 py-0.5 bg-slate-100 text-slate-600 rounded-md">${log.startTime || '整日'} - ${log.endTime || '工作'}</span>
+                            <span class="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md"><i class="fa-regular fa-user me-1"></i>${log.registrant}</span>
+                        </div>
+                        <!-- 一鍵刪除按鈕 -->
+                        <button onclick="deleteSingleLog('${log.id}')" title="一鍵刪除此紀錄" class="text-rose-500 hover:text-rose-700 p-1 rounded-lg hover:bg-rose-50 transition">
+                            <i class="fa-solid fa-trash-can text-xs"></i>
+                        </button>
+                    </div>
+
+                    <p class="text-xs text-slate-700 font-medium leading-relaxed">${log.summary}</p>
+
+                    <!-- 資材數據標籤列 -->
+                    <div class="flex flex-wrap gap-1.5 pt-1 text-[11px]">
+                        ${log.water && log.water.amount ? `<span class="px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-100 rounded-md">💧 灌溉: ${log.water.amount} L (${log.water.group === 'exp' ? '實驗組' : '對照組'})</span>` : ''}
+                        ${log.fertilizer && log.fertilizer.name ? `<span class="px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-md">🌱 施肥: ${log.fertilizer.name} ${log.fertilizer.amount}kg (${log.fertilizer.group === 'exp' ? '實驗組' : '對照組'})</span>` : ''}
+                        ${log.pesticide && log.pesticide.name ? `<span class="px-2 py-0.5 bg-rose-50 text-rose-700 border border-rose-100 rounded-md">🛡️ 防治: ${log.pesticide.name} (${log.pesticide.dilution}) 安全期:${log.pesticide.safetyPeriod}天</span>` : ''}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+
+        // ==================== 5. 預排月曆與待辦 (Tab 2 Logic) ====================
+        function renderCalendar() {
+            const grid = document.getElementById('calendar-days-grid');
+            grid.innerHTML = '';
+            
+            // 簡單生成 10 月 31 天模組視圖
+            for (let day = 1; day <= 31; day++) {
+                const dayStr = `2026-10-${day < 10 ? '0' + day : day}`;
+                const hasSchedules = appState.crops[appState.currentCrop].schedules.filter(s => s.date === dayStr);
+
+                const cell = document.createElement('div');
+                cell.className = `min-h-[50px] p-1 border border-slate-100 rounded-xl bg-white flex flex-col justify-between text-xs hover:border-emerald-400 cursor-pointer transition ${day === 10 ? 'ring-2 ring-emerald-500' : ''}`;
+                cell.innerHTML = `
+                    <div class="font-bold ${day === 10 ? 'text-emerald-600' : 'text-slate-700'}">${day}</div>
+                    <div class="space-y-0.5">
+                        ${hasSchedules.map(s => `<div class="text-[9px] truncate px-1 rounded ${s.priority === 'high' ? 'bg-rose-100 text-rose-800 font-bold' : 'bg-emerald-100 text-emerald-800'}">${s.title}</div>`).join('')}
+                    </div>
+                `;
+                grid.appendChild(cell);
+            }
+
+            renderSchedulesList();
+        }
+
+        function handleSaveSchedule(e) {
+            e.preventDefault();
+            const newSched = {
+                id: 'sch_' + Date.now(),
+                date: document.getElementById('sched-date').value,
+                title: document.getElementById('sched-title').value,
+                priority: document.getElementById('sched-priority').value,
+                registrant: document.getElementById('sched-registrant').value,
+                completed: false
+            };
+
+            appState.crops[appState.currentCrop].schedules.push(newSched);
+            saveStateToStorage();
+            document.getElementById('sched-title').value = '';
+            renderCalendar();
+        }
+
+        function deleteSingleSchedule(schedId) {
+            const scheds = appState.crops[appState.currentCrop].schedules;
+            appState.crops[appState.currentCrop].schedules = scheds.filter(s => s.id !== schedId);
+            saveStateToStorage();
+            renderCalendar();
+            showToast('已刪除待辦事項', 'info');
+        }
+
+        function renderSchedulesList() {
+            const container = document.getElementById('schedule-list-container');
+            const scheds = appState.crops[appState.currentCrop].schedules;
+
+            document.getElementById('pending-tasks-count').innerText = scheds.filter(s => !s.completed).length;
+            document.getElementById('pending-tasks-count').classList.toggle('hidden', scheds.length === 0);
+
+            if (scheds.length === 0) {
+                container.innerHTML = '<p class="text-xs text-slate-400 text-center py-4">無預排事項</p>';
+                return;
+            }
+
+            container.innerHTML = scheds.map(s => `
+                <div class="p-2.5 bg-white border border-slate-200 rounded-xl flex items-center justify-between text-xs">
+                    <div>
+                        <div class="font-bold text-slate-800 ${s.completed ? 'line-through text-slate-400' : ''}">${s.title}</div>
+                        <div class="text-[10px] text-slate-400">${s.date} | 負責: ${s.registrant}</div>
+                    </div>
+                    <button onclick="deleteSingleSchedule('${s.id}')" class="text-rose-500 hover:text-rose-700 p-1">
+                        <i class="fa-solid fa-trash-can"></i>
+                    </button>
+                </div>
+            `).join('');
+        }
+
+
+        // ==================== 6. AI 病蟲害診斷 (Tab 3 Logic) ====================
+        const aiDatabase = {
+            late_blight: {
+                title: '🍅 番茄晚疫病 (Late Blight)',
+                confidence: '96.8%',
+                bio: '適當疏剪下部老葉保持通風；發病初期可連續施用 1000 倍亞磷酸加氫氧化鉀中和液，強化植株系統性抗病力。',
+                chemName: '亞托敏 (Azoxystrobin) 25.3% SC',
+                dilution: '1000倍',
+                amount: '500 ml',
+                safety: 3
+            },
+            black_rot: {
+                title: '🥦 青花菜黑腐病 (Black Rot)',
+                confidence: '94.2%',
+                bio: '實施 2-3 年輪作；田間發現病株立即拔除銷毀；注意清晨採收時避開露水未乾時作業。',
+                chemName: '氫氧化銅 (Copper Hydroxide) 53.8%',
+                dilution: '800倍',
+                amount: '600 ml',
+                safety: 7
+            }
+        };
+
+        let currentAiPrescription = null;
+
+        function triggerAiSample(sampleKey) {
+            const data = aiDatabase[sampleKey];
+            if (!data) return;
+
+            currentAiPrescription = data;
+            document.getElementById('ai-placeholder').classList.add('hidden');
+            document.getElementById('ai-analysis-content').classList.remove('hidden');
+
+            document.getElementById('ai-disease-title').innerText = data.title;
+            document.getElementById('ai-confidence').innerText = data.confidence;
+            document.getElementById('ai-bio-remedy').innerText = data.bio;
+            document.getElementById('ai-chem-name').innerText = data.chemName;
+            document.getElementById('ai-chem-dilution').innerText = data.dilution;
+            document.getElementById('ai-chem-amount').innerText = data.amount;
+            document.getElementById('ai-chem-safety').innerText = data.safety + ' 天';
+
+            showToast('🤖 AI 已完成影像分析診斷', 'success');
+        }
+
+        function runAiDiagnosisMock(input) {
+            if (input.files && input.files[0]) {
+                triggerAiSample('late_blight');
+            }
+        }
+
+        // 一鍵將 AI 處方帶入農務紀錄
+        function applyAiPrescriptionToLog() {
+            if (!currentAiPrescription) return;
+
+            switchTab('daily');
+            
+            document.getElementById('log-pest-name').value = currentAiPrescription.chemName;
+            document.getElementById('log-pest-dilution').value = currentAiPrescription.dilution;
+            document.getElementById('log-pest-amount').value = parseInt(currentAiPrescription.amount);
+            document.getElementById('log-pest-safety').value = currentAiPrescription.safety;
+            document.getElementById('log-summary').value = `【AI 病蟲害處方帶入】針對 ${currentAiPrescription.title} 進行專案防治防護。`;
+
+            saveFormDraft();
+            showToast('⚡ 已成功將 AI 處方帶入登記表單！', 'success');
+        }
+
+
+        // ==================== 7. 後臺數據與 Chart.js (Tab 4 Logic) ====================
+        let chartExpVsCtrl = null;
+        let chartWorkHours = null;
+
+        function renderDashboard() {
+            const logs = appState.crops[appState.currentCrop].logs;
+
+            let expWater = 0, ctrlWater = 0;
+            let expFert = 0, ctrlFert = 0;
+            let pesticideEvents = 0;
+
+            logs.forEach(l => {
+                if (l.water) {
+                    if (l.water.group === 'exp') expWater += l.water.amount;
+                    else ctrlWater += l.water.amount;
+                }
+                if (l.fertilizer) {
+                    if (l.fertilizer.group === 'exp') expFert += l.fertilizer.amount;
+                    else ctrlFert += l.fertilizer.amount;
+                }
+                if (l.pesticide && l.pesticide.name) pesticideEvents++;
+            });
+
+            document.getElementById('stat-total-hours').innerText = (logs.length * 2.5).toFixed(1);
+            document.getElementById('stat-exp-water').innerText = expWater + ' L';
+            document.getElementById('stat-ctrl-water').innerText = ctrlWater + ' L';
+            document.getElementById('stat-exp-fert').innerText = expFert.toFixed(1) + ' kg';
+            document.getElementById('stat-ctrl-fert').innerText = ctrlFert.toFixed(1) + ' kg';
+            document.getElementById('stat-pesticide-count').innerText = pesticideEvents + ' 次';
+
+            initCharts(expWater, ctrlWater, expFert, ctrlFert);
+        }
+
+        function initCharts(expWater, ctrlWater, expFert, ctrlFert) {
+            const ctx1 = document.getElementById('chart-exp-vs-ctrl').getContext('2d');
+            const ctx2 = document.getElementById('chart-work-hours').getContext('2d');
+
+            if (chartExpVsCtrl) chartExpVsCtrl.destroy();
+            if (chartWorkHours) chartWorkHours.destroy();
+
+            chartExpVsCtrl = new Chart(ctx1, {
+                type: 'bar',
+                data: {
+                    labels: ['累積灌溉水量 (L)', '施肥總用量 (kg)'],
+                    datasets: [
+                        { label: '🧪 實驗組', data: [expWater, expFert], backgroundColor: '#059669' },
+                        { label: '⚖️ 對照組', data: [ctrlWater, ctrlFert], backgroundColor: '#94a3b8' }
+                    ]
+                },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+
+            chartWorkHours = new Chart(ctx2, {
+                type: 'line',
+                data: {
+                    labels: ['10/05', '10/06', '10/07', '10/08', '10/09', '10/10'],
+                    datasets: [{
+                        label: '每日總工時 (小時)',
+                        data: [3.5, 4.0, 2.5, 5.0, 3.5, 4.2],
+                        borderColor: '#10b981',
+                        tension: 0.3,
+                        fill: false
+                    }]
+                },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+        }
+
+        // CSV 匯出 (包含 UTF-8 BOM 避免亂碼)
+        function exportLogsToCSV() {
+            const logs = appState.crops[appState.currentCrop].logs;
+            if (logs.length === 0) {
+                showToast('無資料可匯出', 'error');
+                return;
+            }
+
+            let csvContent = '\uFEFF日期,登記人,開始時間,結束時間,摘要內容,灌溉水量(L),組別,肥料名稱,肥料用量(kg),農藥名稱,安全期(天)\n';
+            logs.forEach(l => {
+                csvContent += `"${l.date}","${l.registrant}","${l.startTime}","${l.endTime}","${l.summary}",${l.water?.amount || 0},"${l.water?.group || ''}","${l.fertilizer?.name || ''}",${l.fertilizer?.amount || 0},"${l.pesticide?.name || ''}",${l.pesticide?.safetyPeriod || 0}\n`;
+            });
+
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `${appState.crops[appState.currentCrop].name}_產銷履歷報表.csv`;
+            link.click();
+            showToast('已完成 CSV 報表下載', 'success');
+        }
+
+
+        // ==================== 8. 產銷履歷與 QR Code (Tab 5 Logic) ====================
+        function renderTraceability() {
+            const container = document.getElementById('traceability-timeline');
+            const crop = appState.crops[appState.currentCrop];
+            document.getElementById('trace-crop-title').innerText = `${crop.name} 產銷履歷公開檢視頁`;
+
+            container.innerHTML = crop.logs.map(log => `
+                <div class="relative pl-8 pb-4">
+                    <div class="absolute left-1.5 top-1.5 w-4 h-4 bg-emerald-500 rounded-full border-2 border-white shadow-xs"></div>
+                    <div class="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs">
+                        <div class="flex items-center justify-between text-xs mb-1">
+                            <span class="font-bold text-slate-800">${log.date}</span>
+                            <span class="text-slate-500">栽培員: ${log.registrant}</span>
+                        </div>
+                        <p class="text-xs text-slate-600 font-medium">${log.summary}</p>
+                    </div>
+                </div>
+            `).join('');
+
+            generateQrCode();
+        }
+
+        function generateQrCode() {
+            const qrContainer = document.getElementById('qrcode-canvas');
+            qrContainer.innerHTML = '';
+            new QRCode(qrContainer, {
+                text: window.location.href,
+                width: 140,
+                height: 140,
+                colorDark: '#065f46',
+                colorLight: '#ffffff',
+            });
+        }
+
+        function downloadQrCode() {
+            const img = document.querySelector('#qrcode-canvas img');
+            if (img) {
+                const link = document.createElement('a');
+                link.href = img.src;
+                link.download = `${appState.crops[appState.currentCrop].name}_QRCode.png`;
+                link.click();
+            }
+        }
+
+
+        // ==================== 9. 系統設定與一鍵清空/重置 (Tab 6 Logic) ====================
+        function renderRegistrantsList() {
+            const container = document.getElementById('registrants-list-container');
+            container.innerHTML = appState.registrants.map(r => `
+                <div class="p-3 bg-white border border-slate-200 rounded-xl flex items-center justify-between shadow-xs">
+                    <div>
+                        <div class="font-bold text-xs text-slate-800">${r.name}</div>
+                        <div class="text-[10px] text-slate-400">${r.title}</div>
+                    </div>
+                    <button onclick="deleteRegistrant('${r.id}')" class="text-rose-500 hover:text-rose-700 p-1">
+                        <i class="fa-solid fa-trash-can text-xs"></i>
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        function handleAddRegistrant(e) {
+            e.preventDefault();
+            const name = document.getElementById('new-reg-name').value.trim();
+            const title = document.getElementById('new-reg-title').value.trim() || '技術員';
+
+            if (!name) return;
+
+            appState.registrants.push({ id: 'reg_' + Date.now(), name, title });
+            saveStateToStorage();
+            document.getElementById('new-reg-name').value = '';
+            document.getElementById('new-reg-title').value = '';
+            renderRegistrantsList();
+            renderRegistrantSelects();
+            showToast('已新增登記人', 'success');
+        }
+
+        function deleteRegistrant(regId) {
+            if (appState.registrants.length <= 1) {
+                showToast('⚠️ 系統需至少留存一位登記人！', 'error');
+                return;
+            }
+
+            showCustomModal({
+                title: '刪除登記人',
+                message: '確定要刪除此登記人嗎？',
+                icon: 'fa-user-minus',
+                danger: true,
+                onConfirm: () => {
+                    appState.registrants = appState.registrants.filter(r => r.id !== regId);
+                    if (appState.activeRegistrantId === regId) {
+                        appState.activeRegistrantId = appState.registrants[0].id;
+                    }
+                    saveStateToStorage();
+                    renderRegistrantsList();
+                    renderRegistrantSelects();
+                    showToast('已刪除登記人', 'info');
+                }
+            });
+        }
+
+        // ⚠️ 一鍵清空當前作物所有紀錄
+        function promptClearCurrentCrop() {
+            const cropName = appState.crops[appState.currentCrop].name;
+            showCustomModal({
+                title: `清空「${cropName}」所有紀錄`,
+                message: `此動作將刪除「${cropName}」的所有歷史農務履歷與預排待辦事項。此操作無法復原！`,
+                icon: 'fa-triangle-exclamation',
+                danger: true,
+                onConfirm: () => {
+                    appState.crops[appState.currentCrop].logs = [];
+                    appState.crops[appState.currentCrop].schedules = [];
+                    saveStateToStorage();
+                    renderAllTabs();
+                    showToast(`已清空「${cropName}」的所有數據`, 'info');
+                }
+            });
+        }
+
+        // 💣 一鍵重置全系統資料 (雙重安全驗證)
+        function promptFullSystemReset() {
+            showCustomModal({
+                title: '💣 重置全系統資料',
+                message: '這將會一鍵清空全系統的所有作物、登記人與歷史履歷，並還原至最初預設狀態！',
+                icon: 'fa-bomb',
+                danger: true,
+                requireInput: 'RESET',
+                onConfirm: () => {
+                    localStorage.removeItem(STORAGE_KEY);
+                    localStorage.removeItem(DRAFT_PREFIX + 'tomato');
+                    localStorage.removeItem(DRAFT_PREFIX + 'broccoli');
+                    appState = JSON.parse(JSON.stringify(defaultState));
+                    saveStateToStorage(false);
+                    renderAllTabs();
+                    showToast('💥 全系統資料已一鍵重置為初始狀態！', 'success');
+                }
+            });
+        }
+
+
+        // ==================== 10. 全局輔助與初始化 ====================
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+            document.getElementById('tab-' + tabId).classList.remove('hidden');
+
+            document.querySelectorAll('[id^="tab-btn-"]').forEach(btn => {
+                btn.className = 'flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition text-slate-600 hover:text-slate-900 hover:bg-slate-100';
+            });
+            document.getElementById('tab-btn-' + tabId).className = 'flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition bg-white text-emerald-800 shadow-xs border border-emerald-200';
+
+            if (tabId === 'dashboard') renderDashboard();
+            if (tabId === 'calendar') renderCalendar();
+            if (tabId === 'traceability') renderTraceability();
+        }
+
+        function getTodayString() {
+            return new Date().toISOString().split('T')[0];
+        }
+
+        function previewImage(input, previewId) {
+            if (input.files && input.files[0]) {
+                const reader = new FileReader();
+                reader.onload = e => {
+                    const container = document.getElementById(previewId);
+                    container.querySelector('img').src = e.target.result;
+                    container.classList.remove('hidden');
+                };
+                reader.readAsDataURL(input.files[0]);
+            }
+        }
+
+        function renderAllTabs() {
+            updateCropHeaderUI();
+            renderRegistrantSelects();
+            renderLogsList();
+            renderCalendar();
+            renderDashboard();
+            renderTraceability();
+            renderRegistrantsList();
+        }
+
+        // 頁面載入初始化
+        window.onload = function() {
+            document.getElementById('log-date').value = getTodayString();
+            document.getElementById('sched-date').value = getTodayString();
+            
+            setupDraftAutoSaveListeners();
+            renderAllTabs();
+            checkAndRestoreDraft();
+            switchTab('daily');
+        };
+    </script>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<style>
+#farm-cloud-panel{position:fixed;right:16px;bottom:74px;z-index:9999;width:min(420px,calc(100vw - 24px));max-height:78vh;overflow:auto;background:#fff;border:1px solid #d1d5db;border-radius:18px;box-shadow:0 20px 60px #0f172a33;padding:16px;color:#1f2937;font:14px/1.45 system-ui,sans-serif}
+#farm-cloud-panel input{border:1px solid #cbd5e1;border-radius:8px;padding:8px;width:100%;margin:4px 0 8px}
+#farm-cloud-panel button{border-radius:8px;padding:8px 10px;font-weight:600}
+#farm-cloud-toggle{position:fixed;right:16px;bottom:16px;z-index:9999;background:#166534;color:white;border:0;border-radius:999px;padding:12px 16px;box-shadow:0 8px 24px #0f172a33;font-weight:700}
+.farm-cloud-item{border-top:1px solid #e5e7eb;padding:9px 0;display:flex;gap:8px;align-items:flex-start}
+</style>
+<button id="farm-cloud-toggle" type="button">☁️ 雲端管理</button>
+<section id="farm-cloud-panel" hidden>
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+    <h2 style="font-size:18px;font-weight:800;margin:0">雲端同步與公開權限</h2>
+    <button id="farm-cloud-close" type="button" style="background:#f3f4f6;color:#374151">關閉</button>
+  </div>
+  <p style="color:#64748b;font-size:12px;margin:8px 0">使用 Supabase 編輯者帳號登入。訪客只能讀取已核准公開的紀錄；本機示範資料不會自動上傳。</p>
+  <div id="farm-cloud-auth">
+    <label for="farm-cloud-email">編輯者 Email</label><input id="farm-cloud-email" type="email" autocomplete="username" placeholder="管理者信箱">
+    <label for="farm-cloud-password">密碼</label><input id="farm-cloud-password" type="password" autocomplete="current-password" placeholder="Supabase 編輯者密碼">
+    <button id="farm-cloud-login" type="button" style="background:#166534;color:white;width:100%">登入</button>
+  </div>
+  <div id="farm-cloud-signed" hidden>
+    <p id="farm-cloud-user" style="font-size:12px;color:#475569"></p>
+    <button id="farm-cloud-logout" type="button" style="background:#f3f4f6;color:#374151">登出</button>
+    <button id="farm-cloud-sync" type="button" style="background:#166534;color:white;margin-left:6px">同步本機紀錄</button>
+    <button id="farm-cloud-refresh" type="button" style="background:#e2e8f0;color:#334155;margin-left:6px">更新清單</button>
+    <p style="font-size:12px;color:#64748b;margin:8px 0">同步前請確認本機紀錄。首次同步會把本機資料當作「未公開」紀錄；請在下方逐筆核准後才會出現在公開履歷。</p>
+    <h3 style="font-weight:800;margin:12px 0 4px">公開履歷核准</h3>
+    <div id="farm-cloud-approvals"><p style="color:#64748b">登入後載入雲端紀錄。</p></div>
+    <button id="farm-cloud-save-approvals" type="button" style="background:#166534;color:white;width:100%;margin-top:8px">儲存公開狀態</button>
+  </div>
+  <div id="farm-cloud-message" role="status" style="margin-top:10px;font-size:12px;color:#475569;white-space:pre-wrap"></div>
+</section>
+<script>
+(function(){
+  var panel=document.getElementById('farm-cloud-panel');
+  var msg=document.getElementById('farm-cloud-message');
+  var user=null;
+  var rowsCache=[];
+  var client=null;
+  function say(t,isError){msg.textContent=t;msg.style.color=isError?'#b91c1c':'#475569';}
+  function escHtml(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+  function cropName(id){return id==='tomato'?'小果番茄':'青花菜';}
+  function getCropId(name){return name==='小果番茄'||name==='tomato'?'tomato':'broccoli';}
+  function durationHours(log){try{var a=String(log.startTime||'08:00').split(':');var b=String(log.endTime||'09:00').split(':');return Math.max(0,((+b[0]*60 + +b[1])-(+a[0]*60 + +a[1]))/60);}catch(e){return 1;}}
+  async function uploadPhoto(log,cropId){
+    var data=log && log.water && log.water.photo;
+    if(!data || typeof data!=='string' || data.indexOf('data:image/')!==0) return [];
+    try{
+      var response=await fetch(data);var blob=await response.blob();
+      var ext=(blob.type||'image/jpeg').split('/')[1].replace('jpeg','jpg');
+      var path=user.id+'/'+cropId+'/'+String(log.id).replace(/[^a-zA-Z0-9_-]/g,'_')+'.'+ext;
+      var up=await client.storage.from('farm-private-photos').upload(path,blob,{upsert:true,contentType:blob.type||'image/jpeg'});
+      if(up.error) throw up.error;
+      return [{bucket:'farm-private-photos',path:path}];
+    }catch(e){console.warn('照片上傳失敗',e);return [];}
+  }
+  async function initClient(){
+    if(client) return client;
+    if(!window.supabase || !window.FARM_CONFIG || !window.FARM_CONFIG.SUPABASE_URL || !window.FARM_CONFIG.SUPABASE_ANON_KEY) throw new Error('找不到 Supabase 設定，請確認 config.js。');
+    client=window.supabase.createClient(window.FARM_CONFIG.SUPABASE_URL,window.FARM_CONFIG.SUPABASE_ANON_KEY);
+    return client;
+  }
+  async function loadSession(){
+    try{
+      await initClient();
+      var res=await client.auth.getSession();
+      if(res.data && res.data.session) user=res.data.session.user;
+      setAuthUi();
+    }catch(e){say('雲端初始化失敗：'+e.message,true);}
+  }
+  function setAuthUi(){
+    document.getElementById('farm-cloud-auth').hidden=!!user;
+    document.getElementById('farm-cloud-signed').hidden=!user;
+    document.getElementById('farm-cloud-user').textContent=user?'已登入：'+user.email:'';
+  }
+  async function login(){
+    try{
+      await initClient();
+      var email=document.getElementById('farm-cloud-email').value.trim();
+      var password=document.getElementById('farm-cloud-password').value;
+      if(!email||!password) return say('請輸入 Email 與密碼。',true);
+      var res=await client.auth.signInWithPassword({email:email,password:password});
+      if(res.error) throw res.error;
+      user=res.data.user;setAuthUi();say('登入成功。正在載入雲端紀錄。');await loadApprovals();
+    }catch(e){say('登入失敗：'+e.message,true);}
+  }
+  async function logout(){
+    try{if(client) await client.auth.signOut();user=null;setAuthUi();document.getElementById('farm-cloud-approvals').innerHTML='';say('已登出。');}
+    catch(e){say('登出失敗：'+e.message,true);}
+  }
+  async function syncLocal(){
+    if(!user) return say('請先登入編輯者帳號。',true);
+    try{
+      var state=window.appState;
+      if(!state || !state.crops) throw new Error('目前無法讀取本機農務資料。');
+      var existingRes=await client.from('farm_logs').select('id,is_public,photo_urls').eq('user_id',user.id);
+      if(existingRes.error) throw existingRes.error;
+      var existing={};(existingRes.data||[]).forEach(function(r){existing[r.id]=r;});
+      var output=[];
+      for(var cropId of Object.keys(state.crops)){
+        var crop=state.crops[cropId];
+        for(var log of (crop.logs||[])){
+          var old=existing[String(log.id)];
+          var photos=old&&Array.isArray(old.photo_urls)?old.photo_urls:await uploadPhoto(log,cropId);
+          output.push({
+            id:String(log.id),crop:cropId,registrar:String(log.registrant||''),group_type:String(log.water&&log.water.group||''),
+            category:'田間農務',material_name:String(log.summary||''),hours:durationHours(log),
+            amount:String(log.water&&log.water.amount!=null?log.water.amount:''),unit:'L',
+            dilution:String(log.pesticide&&log.pesticide.dilution||'-'),phi:String(log.pesticide&&log.pesticide.safetyPeriod!=null?log.pesticide.safetyPeriod:'-'),
+            notes:String(log.summary||''),log_timestamp:String(log.date||'')+(log.startTime?' '+log.startTime:''),
+            is_public:old?!!old.is_public:false,photo_urls:photos,user_id:user.id
+          });
+        }
+      }
+      if(!output.length) return say('沒有可同步的農務紀錄。');
+      var saved=await client.from('farm_logs').upsert(output,{onConflict:'id'});
+      if(saved.error) throw saved.error;
+      say('同步完成：'+output.length+' 筆。新紀錄預設未公開；請在下方核准要公開的紀錄。');
+      await loadApprovals();
+    }catch(e){say('同步失敗：'+e.message,true);}
+  }
+  async function loadApprovals(){
+    if(!user) return;
+    try{
+      var res=await client.from('farm_logs').select('id,crop,registrar,material_name,log_timestamp,is_public,photo_urls').order('log_timestamp',{ascending:false});
+      if(res.error) throw res.error;
+      rowsCache=res.data||[];
+      var el=document.getElementById('farm-cloud-approvals');
+      if(!rowsCache.length){el.innerHTML='<p style="color:#64748b">目前沒有雲端紀錄；可先按「同步本機紀錄」。</p>';return;}
+      el.innerHTML=rowsCache.map(function(r){return '<label class="farm-cloud-item"><input style="width:auto;margin:3px 0 0" type="checkbox" data-farm-log-id="'+escHtml(r.id)+'" '+(r.is_public?'checked':'')+'><span><strong>'+escHtml(cropName(r.crop))+' · '+escHtml(r.material_name||r.id)+'</strong><br><small style="color:#64748b">'+escHtml(r.log_timestamp||'')+' · '+escHtml(r.registrar||'')+' · '+(r.is_public?'已公開':'未公開')+'</small></span></label>';}).join('');
+    }catch(e){say('載入核准清單失敗：'+e.message,true);}
+  }
+  async function saveApprovals(){
+    if(!user) return say('請先登入編輯者帳號。',true);
+    try{
+      var checks=Array.from(document.querySelectorAll('#farm-cloud-approvals input[data-farm-log-id]'));
+      for(var check of checks){
+        var id=check.getAttribute('data-farm-log-id');
+        var row=rowsCache.find(function(r){return String(r.id)===String(id);});
+        if(!row || !!row.is_public===check.checked) continue;
+        var patch={is_public:check.checked};
+        if(check.checked && Array.isArray(row.photo_urls)){
+          var published=[];
+          for(var p of row.photo_urls){
+            if(p && p.bucket==='farm-private-photos' && p.path){
+              var down=await client.storage.from('farm-private-photos').download(p.path);
+              if(!down.error){
+                var ext=(down.data.type||'image/jpeg').split('/')[1].replace('jpeg','jpg');
+                var dest=user.id+'/'+String(row.crop)+'/'+String(row.id).replace(/[^a-zA-Z0-9_-]/g,'_')+'.'+ext;
+                var up=await client.storage.from('farm-public-photos').upload(dest,down.data,{upsert:true,contentType:down.data.type||'image/jpeg'});
+                if(!up.error) published.push({bucket:'farm-public-photos',path:dest});
+              }
+            }else if(p && p.bucket==='farm-public-photos') published.push(p);
+          }
+          patch.photo_urls=published;
+        }
+        var upd=await client.from('farm_logs').update(patch).eq('id',id);
+        if(upd.error) throw upd.error;
+      }
+      say('公開狀態已儲存。公開訪客只能讀取已核准紀錄。');await loadApprovals();await renderPublicTraceability();
+    }catch(e){say('儲存公開狀態失敗：'+e.message,true);}
+  }
+  async function renderPublicTraceability(){
+    try{
+      await initClient();
+      var cropId=window.appState&&window.appState.currentCrop?window.appState.currentCrop:'tomato';
+      var res=await client.from('farm_logs').select('id,crop,registrar,material_name,log_timestamp,notes,photo_urls').eq('is_public',true).eq('crop',cropId).order('log_timestamp',{ascending:false});
+      if(res.error) throw res.error;
+      var container=document.getElementById('traceability-timeline');
+      if(!container) return;
+      var list=res.data||[];
+      if(!list.length){container.innerHTML='<div class="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">目前沒有經管理者核准公開的雲端紀錄。</div>';return;}
+      container.innerHTML=list.map(function(r){
+        var imgs=(Array.isArray(r.photo_urls)?r.photo_urls:[]).filter(function(p){return p&&p.bucket==='farm-public-photos'&&p.path;}).map(function(p){var url=client.storage.from('farm-public-photos').getPublicUrl(p.path).data.publicUrl;return '<img src="'+escHtml(url)+'" alt="農務紀錄照片" style="width:100%;max-width:180px;border-radius:8px;margin-top:8px">';}).join('');
+        return '<div class="relative pl-8 pb-4"><div class="absolute left-1.5 top-1.5 w-4 h-4 bg-emerald-500 rounded-full border-2 border-white shadow-xs"></div><div class="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs"><div class="flex items-center justify-between text-xs mb-1"><span class="font-bold text-slate-800">'+escHtml(r.log_timestamp||'')+'</span><span class="text-slate-500">栽培員：'+escHtml(r.registrar||'')+'</span></div><p class="text-xs text-slate-600 font-medium">'+escHtml(r.material_name||r.notes||'農務紀錄')+'</p>'+imgs+'</div></div>';
+      }).join('');
+    }catch(e){console.warn('公開履歷載入失敗',e);var c=document.getElementById('traceability-timeline');if(c)c.innerHTML='<div class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">雲端履歷暫時無法載入，請稍後重試。</div>';}
+  }
+  document.getElementById('farm-cloud-toggle').addEventListener('click',function(){panel.hidden=!panel.hidden;if(!panel.hidden)loadSession();});
+  document.getElementById('farm-cloud-close').addEventListener('click',function(){panel.hidden=true;});
+  document.getElementById('farm-cloud-login').addEventListener('click',login);
+  document.getElementById('farm-cloud-logout').addEventListener('click',logout);
+  document.getElementById('farm-cloud-sync').addEventListener('click',syncLocal);
+  document.getElementById('farm-cloud-refresh').addEventListener('click',loadApprovals);
+  document.getElementById('farm-cloud-save-approvals').addEventListener('click',saveApprovals);
+  var oldRender=window.renderTraceability;
+  window.renderTraceability=function(){if(oldRender)oldRender();renderPublicTraceability();};
+  var oldOnload=window.onload;
+  window.onload=function(){if(oldOnload)oldOnload();loadSession();renderPublicTraceability();};
+  window.farmCloud={refresh:loadApprovals,renderPublic:renderPublicTraceability};
+})();
+</script>
+
+</body>
+</html>
