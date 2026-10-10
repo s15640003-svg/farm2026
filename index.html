@@ -1484,7 +1484,7 @@
   <div id="farm-cloud-signed" hidden>
     <p id="farm-cloud-user" style="font-size:12px;color:#475569"></p>
     <button id="farm-cloud-logout" type="button" style="background:#f3f4f6;color:#374151">登出</button>
-    <button id="farm-cloud-sync" type="button" style="background:#166534;color:white;margin-left:6px">同步本機紀錄</button>
+    <button id="farm-cloud-sync" type="button" style="background:#166534;color:white;margin-left:6px">同步本機紀錄</button>\n    <button id="farm-cloud-load" type="button" style="background:#dbeafe;color:#1e40af;margin-left:6px">從雲端載入紀錄</button>
     <button id="farm-cloud-refresh" type="button" style="background:#e2e8f0;color:#334155;margin-left:6px">更新清單</button>
     <p style="font-size:12px;color:#64748b;margin:8px 0">同步前請確認本機紀錄。首次同步會把本機資料當作「未公開」紀錄；請在下方逐筆核准後才會出現在公開履歷。</p>
     <h3 style="font-weight:800;margin:12px 0 4px">公開履歷核准</h3>
@@ -1508,14 +1508,14 @@
   async function uploadPhoto(log,cropId){
     var data=log && log.water && log.water.photo;
     if(!data || typeof data!=='string' || data.indexOf('data:image/')!==0) return [];
-    try{
-      var response=await fetch(data);var blob=await response.blob();
-      var ext=(blob.type||'image/jpeg').split('/')[1].replace('jpeg','jpg');
-      var path=user.id+'/'+cropId+'/'+String(log.id).replace(/[^a-zA-Z0-9_-]/g,'_')+'.'+ext;
-      var up=await client.storage.from('farm-private-photos').upload(path,blob,{upsert:true,contentType:blob.type||'image/jpeg'});
-      if(up.error) throw up.error;
-      return [{bucket:'farm-private-photos',path:path}];
-    }catch(e){console.warn('照片上傳失敗',e);return [];}
+    var response=await fetch(data);var blob=await response.blob();
+    if(!/^image\\/(jpeg|png|webp)$/.test(blob.type)) throw new Error('照片格式不支援，請使用 JPG、PNG 或 WEBP。');
+    if(blob.size>8*1024*1024) throw new Error('照片超過 8MB，請縮小後再同步。');
+    var ext=(blob.type||'image/jpeg').split('/')[1].replace('jpeg','jpg');
+    var path=user.id+'/'+cropId+'/'+String(log.id).replace(/[^a-zA-Z0-9_-]/g,'_')+'.'+ext;
+    var up=await client.storage.from('farm-private-photos').upload(path,blob,{upsert:true,contentType:blob.type||'image/jpeg'});
+    if(up.error) throw new Error('照片雲端上傳失敗：'+up.error.message);
+    return [{bucket:'farm-private-photos',path:path}];
   }
   async function initClient(){
     if(client) return client;
@@ -1557,16 +1557,18 @@
       var state=window.appState;
       if(!state || !state.crops) throw new Error('目前無法讀取本機農務資料。');
       var existingRes=await client.from('farm_logs').select('id,is_public,photo_urls').eq('user_id',user.id);
+      if(existingRes.error) throw new Error('讀取雲端既有紀錄失敗：'+existingRes.error.message);
       if(existingRes.error) throw existingRes.error;
       var existing={};(existingRes.data||[]).forEach(function(r){existing[r.id]=r;});
       var output=[];
       for(var cropId of Object.keys(state.crops)){
         var crop=state.crops[cropId];
         for(var log of (crop.logs||[])){
-          var old=existing[String(log.id)];
-          var photos=old&&Array.isArray(old.photo_urls)?old.photo_urls:await uploadPhoto(log,cropId);
+          var cloudId=user.id+'_'+String(log.id).replace(/[^a-zA-Z0-9_-]/g,'_');
+          var old=existing[cloudId] || existing[String(log.id)];
+          var photos=old&&Array.isArray(old.photo_urls)&&old.photo_urls.length?old.photo_urls:await uploadPhoto(log,cropId);
           output.push({
-            id:String(log.id),crop:cropId,registrar:String(log.registrant||''),group_type:String(log.water&&log.water.group||''),
+            id:cloudId,crop:cropId,registrar:String(log.registrant||''),group_type:String(log.water&&log.water.group||''),
             category:'田間農務',material_name:String(log.summary||''),hours:durationHours(log),
             amount:String(log.water&&log.water.amount!=null?log.water.amount:''),unit:'L',
             dilution:String(log.pesticide&&log.pesticide.dilution||'-'),phi:String(log.pesticide&&log.pesticide.safetyPeriod!=null?log.pesticide.safetyPeriod:'-'),
@@ -1577,10 +1579,35 @@
       }
       if(!output.length) return say('沒有可同步的農務紀錄。');
       var saved=await client.from('farm_logs').upsert(output,{onConflict:'id'});
-      if(saved.error) throw saved.error;
-      say('同步完成：'+output.length+' 筆。新紀錄預設未公開；請在下方核准要公開的紀錄。');
+      if(saved.error) throw new Error('寫入雲端資料庫失敗：'+saved.error.message);
+      say('同步完成：'+output.length+' 筆紀錄已寫入雲端。照片若有上傳失敗會直接顯示錯誤；新紀錄預設未公開。');
       await loadApprovals();
     }catch(e){say('同步失敗：'+e.message,true);}
+  }
+  async function loadCloudToLocal(){
+    if(!user) return say('請先登入編輯者帳號。',true);
+    try{
+      var res=await client.from('farm_logs').select('id,crop,registrar,group_type,category,material_name,hours,amount,unit,dilution,phi,notes,log_timestamp,photo_urls,user_id').eq('user_id',user.id).order('log_timestamp',{ascending:false});
+      if(res.error) throw new Error('讀取雲端紀錄失敗：'+res.error.message);
+      var state=window.appState;
+      if(!state||!state.crops) throw new Error('目前無法讀取本機農務資料。');
+      var loaded=0;
+      (res.data||[]).forEach(function(row){
+        var cropId=row.crop==='tomato'?'tomato':'broccoli';
+        if(!state.crops[cropId]) return;
+        var logs=state.crops[cropId].logs||(state.crops[cropId].logs=[]);
+        var originalId=String(row.id).startsWith(user.id+'_')?String(row.id).slice(user.id.length+1):String(row.id);
+        var item={id:originalId,date:String(row.log_timestamp||'').split(' ')[0]||new Date().toISOString().slice(0,10),startTime:'08:00',endTime:'09:00',registrant:row.registrar||'',summary:row.material_name||row.notes||'',water:{group:row.group_type||'',amount:row.amount||'',photo:null},pesticide:{dilution:row.dilution||'-',safetyPeriod:row.phi||'-'},cloudPhotoUrls:Array.isArray(row.photo_urls)?row.photo_urls:[]};
+        var idx=logs.findIndex(function(x){return String(x.id)===originalId;});
+        if(idx>=0) logs[idx]=Object.assign({},logs[idx],item); else logs.push(item);
+        loaded++;
+      });
+      window.appState=state;
+      if(typeof saveStateToStorage==='function') saveStateToStorage(false);
+      if(typeof renderAllTabs==='function') renderAllTabs();
+      say('已從雲端載入 '+loaded+' 筆紀錄至本機畫面。雲端照片保留在儲存空間；本次不會覆蓋其他本機紀錄。');
+      await loadApprovals();
+    }catch(e){say('從雲端載入失敗：'+e.message,true);}
   }
   async function loadApprovals(){
     if(!user) return;
@@ -1643,7 +1670,7 @@
   document.getElementById('farm-cloud-close').addEventListener('click',function(){panel.hidden=true;});
   document.getElementById('farm-cloud-login').addEventListener('click',login);
   document.getElementById('farm-cloud-logout').addEventListener('click',logout);
-  document.getElementById('farm-cloud-sync').addEventListener('click',syncLocal);
+  document.getElementById('farm-cloud-sync').addEventListener('click',syncLocal);\n  document.getElementById('farm-cloud-load').addEventListener('click',loadCloudToLocal);
   document.getElementById('farm-cloud-refresh').addEventListener('click',loadApprovals);
   document.getElementById('farm-cloud-save-approvals').addEventListener('click',saveApprovals);
   var oldRender=window.renderTraceability;
